@@ -2,36 +2,28 @@
 #include <TimeAlarms.h>
 #include <Wire.h>
 #include <DS1307RTC.h>
-
-AlarmId id;
+#include <TinyGPS.h>
 
 int relayPin = 6;
+int syncLed = 13;
 
+TinyGPS gps;
+
+tmElements_t tm;
 void setup() {
 
   Serial.begin(9600);
   while (!Serial) ; // wait for Arduino Serial Monitor
 
   pinMode(relayPin, OUTPUT);
+  pinMode(syncLed, OUTPUT);
+  
   digitalWrite(relayPin, LOW);
-  
-  tmElements_t tm;
-  
-  if (RTC.read(tm)) {
-    Serial.print("Setting SoftClock to RTC\n");
-    setTime(tm.Hour, tm.Minute, tm.Second, tm.Month, tm.Day, tm.Year);
-  } else {
-    if (RTC.chipPresent()) {
-      Serial.println("The DS1307 is stopped.  Please run the SetTime");
-      Serial.println("example to initialize the time and begin running.");
-      Serial.println();
-    } else {
-      Serial.println("DS1307 read error!  Please check the circuitry.");
-      Serial.println();
-    }
-    delay(9000);
-  }
-  
+  digitalWrite(syncLed, LOW); 
+    
+  setSyncProvider(syncClock); 
+  setSyncInterval(900); 
+ 
   Alarm.alarmRepeat(0 ,57, 54, ShortAlarm);
   Alarm.alarmRepeat(1 ,57, 54, ShortAlarm);
   Alarm.alarmRepeat(2, 57, 54, ShortAlarm);
@@ -63,24 +55,40 @@ void loop() {
   Alarm.delay(1000); // check every second for possible event.
 }
 
+time_t syncClock() {
+  if (RTC.read(tm)) {
+    digitalWrite(syncLed, HIGH);
+    Serial.println("Good Sync!");
+    return makeTime(tm);
+  } else {
+    digitalWrite(syncLed, LOW);
+    return 0;
+  }
+}
+
 void ShortAlarm() {
- Serial.println("Relay On");
- digitalWrite(relayPin, HIGH);
- Alarm.delay(8000);
- Serial.println("Relay Off");
- digitalWrite(relayPin, LOW); 
+  Serial.println("Relay On:");
+  digitalClockDisplay();
+  digitalWrite(relayPin, HIGH);
+  Alarm.delay(8000);
+  Serial.println("Relay Off\n");
+  digitalWrite(relayPin, LOW); 
+  digitalClockDisplay();
 }
 
 void LongAlarm() {
- Serial.println("Relay On");
- digitalWrite(relayPin, HIGH);
- Alarm.delay(14000);
- Serial.println("Relay Off");
- digitalWrite(relayPin, LOW); 
+  Serial.println("Relay On:");
+  digitalClockDisplay();
+  digitalWrite(relayPin, HIGH);
+  Alarm.delay(14000);
+  Serial.println("Relay Off\n");
+  digitalWrite(relayPin, LOW); 
+  digitalClockDisplay();
 }
-
 void digitalClockDisplay() {
   // digital clock display of the time
+  Serial.print(timeStatus());
+  Serial.print(' ');
   Serial.print(hour());
   printDigits(minute());
   printDigits(second());
