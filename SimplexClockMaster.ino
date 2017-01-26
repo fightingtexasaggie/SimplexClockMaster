@@ -1,19 +1,23 @@
 #include <TimeLib.h>
 #include <TimeAlarms.h>
-#include <Wire.h>
-#include <DS1307RTC.h>
-#include <TinyGPS.h>
+#include <TinyGPS++.h>
+
+#define SerialGPS Serial
 
 int relayPin = 6;
 int syncLed = 13;
 
-TinyGPS gps;
+TinyGPSPlus gps;
 
 tmElements_t tm;
-void setup() {
 
-  Serial.begin(9600);
-  while (!Serial) ; // wait for Arduino Serial Monitor
+// Offset hours from gps time (UTC)
+const int offset = -6;   
+
+void setup() {
+  
+  SerialGPS.begin(9600);
+  delay(5000);
 
   pinMode(relayPin, OUTPUT);
   pinMode(syncLed, OUTPUT);
@@ -24,6 +28,8 @@ void setup() {
   setSyncProvider(syncClock); 
   setSyncInterval(900); 
  
+ // Remember to set number of alarms to at least 24 in TimeAlarms.h before building.
+ // The default is 6, and will cause silent failures if not set high enough.
   Alarm.alarmRepeat(0 ,57, 54, ShortAlarm);
   Alarm.alarmRepeat(1 ,57, 54, ShortAlarm);
   Alarm.alarmRepeat(2, 57, 54, ShortAlarm);
@@ -51,54 +57,49 @@ void setup() {
 }
 
 void loop() {
-  digitalClockDisplay();
   Alarm.delay(1000); // check every second for possible event.
 }
 
 time_t syncClock() {
-  if (RTC.read(tm)) {
-    digitalWrite(syncLed, HIGH);
-    Serial.println("Good Sync!");
-    return makeTime(tm);
-  } else {
-    digitalWrite(syncLed, LOW);
-    return 0;
-  }
+  unsigned long age;
+  int Year;
+  byte Month, Day, Hour, Minute, Second;
+  
+  for (int trial = 0; trial < 25; trial++) {
+    // For one second we parse GPS data and report some key values
+    for (unsigned long start = millis(); millis() - start < 1000;) {
+      while (SerialGPS.available()) {
+        int c = SerialGPS.read();
+        if (gps.encode(c)) {
+          tm.Second = gps.time.second();
+          tm.Minute = gps.time.minute();
+          tm.Hour = gps.time.hour();
+          tm.Day = gps.date.day();
+          tm.Month = gps.date.month();
+          tm.Year = gps.date.year()+30;
+          digitalWrite(syncLed, HIGH);
+          return makeTime(tm);
+        }
+      }
+    }
+  }  
+  digitalWrite(syncLed, LOW);
+  return 0;
 }
 
 void ShortAlarm() {
-  Serial.println("Relay On:");
-  digitalClockDisplay();
-  digitalWrite(relayPin, HIGH);
-  Alarm.delay(8000);
-  Serial.println("Relay Off\n");
-  digitalWrite(relayPin, LOW); 
-  digitalClockDisplay();
+  if (timeStatus() == 2) {
+    digitalWrite(relayPin, HIGH);
+    Alarm.delay(8000);
+    digitalWrite(relayPin, LOW); 
+  }
 }
 
 void LongAlarm() {
-  Serial.println("Relay On:");
-  digitalClockDisplay();
-  digitalWrite(relayPin, HIGH);
-  Alarm.delay(14000);
-  Serial.println("Relay Off\n");
-  digitalWrite(relayPin, LOW); 
-  digitalClockDisplay();
-}
-void digitalClockDisplay() {
-  // digital clock display of the time
-  Serial.print(timeStatus());
-  Serial.print(' ');
-  Serial.print(hour());
-  printDigits(minute());
-  printDigits(second());
-  Serial.println();
-}
-
-void printDigits(int digits) {
-  Serial.print(":");
-  if (digits < 10)
-    Serial.print('0');
-  Serial.print(digits);
+  if (timeStatus() == 2) {
+    digitalWrite(relayPin, HIGH);
+    Alarm.delay(14000);
+    digitalWrite(relayPin, LOW); 
+  }
 }
 
